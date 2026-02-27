@@ -1,110 +1,50 @@
-const CACHE_NAME = 'aiicafe-v1';
-
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/assets/images/Asset_6.png',
-  '/assets/images/Asset_9.png'
+var CACHE = 'aiicafe-v2';
+var PRE = [
+  '/', '/index.html',
+  '/assets/images/Asset_6.png', '/assets/images/Asset_9.png',
+  '/assets/videos/opt/hero.mp4',
+  '/assets/videos/opt/poster1.jpg', '/assets/videos/opt/poster2.jpg',
+  '/assets/videos/opt/poster3.jpg', '/assets/videos/opt/poster4.jpg'
 ];
 
-// Install — precache critical assets
-self.addEventListener('install', function(event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(PRECACHE_URLS);
-    }).then(function() {
-      return self.skipWaiting();
-    })
-  );
+self.addEventListener('install', function(e) {
+  e.waitUntil(caches.open(CACHE).then(function(c) { return c.addAll(PRE) }).then(function() { return self.skipWaiting() }));
 });
 
-// Activate — clean old caches
-self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    caches.keys().then(function(cacheNames) {
-      return Promise.all(
-        cacheNames
-          .filter(function(name) { return name !== CACHE_NAME; })
-          .map(function(name) { return caches.delete(name); })
-      );
-    }).then(function() {
-      return self.clients.claim();
-    })
-  );
+self.addEventListener('activate', function(e) {
+  e.waitUntil(caches.keys().then(function(k) {
+    return Promise.all(k.filter(function(n) { return n !== CACHE }).map(function(n) { return caches.delete(n) }));
+  }).then(function() { return self.clients.claim() }));
 });
 
-// Fetch — cache-first for assets, network-first for HTML
-self.addEventListener('fetch', function(event) {
-  var url = new URL(event.request.url);
+self.addEventListener('fetch', function(e) {
+  var u = new URL(e.request.url);
 
-  // Videos: cache after first fetch (stale-while-revalidate)
-  if (url.pathname.match(/\.(mp4|mov|webm)$/)) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(function(cache) {
-        return cache.match(event.request).then(function(cached) {
-          var fetchPromise = fetch(event.request).then(function(response) {
-            if (response.ok) {
-              cache.put(event.request, response.clone());
-            }
-            return response;
-          }).catch(function() {
-            return cached;
-          });
-          return cached || fetchPromise;
-        });
-      })
-    );
-    return;
-  }
-
-  // Images: cache-first
-  if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|ico)$/)) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(function(cache) {
-        return cache.match(event.request).then(function(cached) {
-          if (cached) return cached;
-          return fetch(event.request).then(function(response) {
-            if (response.ok) {
-              cache.put(event.request, response.clone());
-            }
-            return response;
-          });
-        });
-      })
-    );
+  // Videos, images: cache-first (serve from cache instantly, update in background)
+  if (u.pathname.match(/\.(mp4|png|jpg|jpeg|gif|webp|svg|ico)$/)) {
+    e.respondWith(caches.open(CACHE).then(function(c) {
+      return c.match(e.request).then(function(r) {
+        var net = fetch(e.request).then(function(res) { if (res.ok) c.put(e.request, res.clone()); return res }).catch(function() { return r });
+        return r || net;
+      });
+    }));
     return;
   }
 
   // Fonts: cache-first
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(function(cache) {
-        return cache.match(event.request).then(function(cached) {
-          if (cached) return cached;
-          return fetch(event.request).then(function(response) {
-            if (response.ok) {
-              cache.put(event.request, response.clone());
-            }
-            return response;
-          });
-        });
-      })
-    );
+  if (u.hostname === 'fonts.googleapis.com' || u.hostname === 'fonts.gstatic.com') {
+    e.respondWith(caches.open(CACHE).then(function(c) {
+      return c.match(e.request).then(function(r) {
+        if (r) return r;
+        return fetch(e.request).then(function(res) { if (res.ok) c.put(e.request, res.clone()); return res });
+      });
+    }));
     return;
   }
 
   // HTML: network-first
-  event.respondWith(
-    fetch(event.request).then(function(response) {
-      if (response.ok) {
-        var clone = response.clone();
-        caches.open(CACHE_NAME).then(function(cache) {
-          cache.put(event.request, clone);
-        });
-      }
-      return response;
-    }).catch(function() {
-      return caches.match(event.request);
-    })
-  );
+  e.respondWith(fetch(e.request).then(function(res) {
+    if (res.ok) { var cl = res.clone(); caches.open(CACHE).then(function(c) { c.put(e.request, cl) }) }
+    return res;
+  }).catch(function() { return caches.match(e.request) }));
 });
